@@ -7,6 +7,7 @@ WORKDIR /app
 
 # Install dependencies
 COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install --save-dev ts-node typescript
 RUN npm install
 
 # Copy the rest of the frontend source
