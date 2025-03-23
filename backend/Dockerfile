@@ -1,10 +1,6 @@
 # Use official Python image
 FROM python:3.11-slim
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
 # Set working directory
 WORKDIR /app
 
@@ -21,4 +17,6 @@ COPY backend/. .
 EXPOSE 5000
 
 # Use Gunicorn to run the app in production mode
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "ai_server:app"]
+# CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "ai_server:app"] # Disable for Testing.
+CMD ["python", "ai_server.py"]
+
