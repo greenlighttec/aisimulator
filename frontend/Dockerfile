@@ -7,7 +7,6 @@ WORKDIR /app
 
 # Install dependencies
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install --save-dev ts-node typescript
 RUN npm install
 
 # Copy the rest of the frontend source
@@ -28,7 +27,7 @@ RUN npm install --omit=dev
 # Copy built app from builder stage
 COPY --from=builder /app/.next .next
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/next.config.js ./
+COPY --from=builder /app/next.config.ts ./
 COPY --from=builder /app/package.json ./
 
 # Expose the frontend port
