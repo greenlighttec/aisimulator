@@ -1,8 +1,10 @@
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
 export async function startSession({ name, prompt }: {
   name: string;
   prompt: string;
 }) {
-  const res = await fetch("http://localhost:5000/setup_game", {
+  const res = await fetch(`${BASE_URL}/setup_game`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, prompt })
@@ -21,7 +23,7 @@ export async function runStep({
   thread_id: string;
   message: string;
 }) {
-  const res = await fetch("http://localhost:5000/run_step", {
+  const res = await fetch(`${BASE_URL}/run_step`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ assistant_id, thread_id, message })
