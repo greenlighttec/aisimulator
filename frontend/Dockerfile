@@ -12,6 +12,13 @@ RUN npm install
 # Copy the rest of the frontend source
 COPY frontend/. .
 
+# Log the env var to verify it's available
+RUN echo "Building with NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL"
+
+# Then build
+RUN npm run build
+
+
 # Build the Next.js app
 RUN npm run build
 
