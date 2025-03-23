@@ -1,24 +1,24 @@
-# backend/Dockerfile
-
+# Use official Python image
 FROM python:3.11-slim
 
-# Set working directory inside container
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Set working directory
 WORKDIR /app
 
-# Install dependencies
-COPY backend/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy dependencies
+COPY backend/requirements.txt .
 
-# Copy the rest of the backend code
+# Install dependencies
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+# Copy the backend code
 COPY backend/. .
 
-# Expose the Flask port
+# Expose Flask port
 EXPOSE 5000
 
-# Set environment variable for Flask to find app
-ENV FLASK_APP=ai_server.py
-ENV FLASK_RUN_HOST=0.0.0.0
-ENV FLASK_RUN_PORT=5000
-
-# Start the Flask server
-CMD ["flask", "run"]
+# Use Gunicorn to run the app in production mode
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "ai_server:app"]
