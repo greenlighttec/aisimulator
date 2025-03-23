@@ -26,7 +26,7 @@ export default function Home() {
   const currentBlock = sceneQueue[currentIndex];
 
   useEffect(() => {
-    (window as any).debug = {
+    (window as unknown as Record<string, unknown>).debug = {
       sceneQueue,
       currentBlock,
       currentIndex,
@@ -61,7 +61,7 @@ export default function Home() {
       thread_id: res.thread_id,
       message: `Start the story for ${name}.`
     });
-    (window as any).step = step;
+    (window as unknown as Record<string, unknown>).step = step;
 
     const blocks = step.blocks || [];
     setSceneQueue(blocks);
