@@ -22,7 +22,7 @@ WORKDIR /app
 
 # Install production dependencies only
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install --omit=dev
+RUN npm install
 
 # Copy built app from builder stage
 COPY --from=builder /app/.next .next
