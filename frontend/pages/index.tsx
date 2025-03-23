@@ -92,7 +92,7 @@ export default function Home() {
     setCurrentIndex(0);
 
     const res = await runStep({ assistant_id: assistantId, thread_id: threadId, message: input });
-    (window as any).res = res;
+    (window as unknown as Record<string, unknown>).res = res;
     setInput("");
 
     const blocks = res.blocks as Block[];
