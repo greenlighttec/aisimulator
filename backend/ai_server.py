@@ -13,7 +13,7 @@ CORS(app)
 openai_api_key = os.environ.get("OPENAI_API_KEY")
 client = openai.OpenAI(api_key=openai_api_key)
 
-@app.route("/end_game", methods=["POST"])
+@app.route("api/end_game", methods=["POST"])
 def end_game():
     data = request.json
     assistant_id = data["assistant_id"]
@@ -26,7 +26,7 @@ def end_game():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/run_step", methods=["POST"])
+@app.route("api/run_step", methods=["POST"])
 def run_step():
     data = request.json
     assistant_id = data["assistant_id"]
@@ -83,7 +83,7 @@ def run_step():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/setup_game", methods=["POST"])
+@app.route("api/setup_game", methods=["POST"])
 def setup_game():
     data = request.json
     name = data.get("name", "Player")
@@ -190,7 +190,7 @@ def setup_game():
         return jsonify({"error": str(e)}), 500
 
 # The below route is legacy and will be removed or updated at some point
-@app.route("/generate", methods=["POST"])
+@app.route("api/generate", methods=["POST"])
 def generate():
     data = request.json
     player_name = data.get("name", "Player")
@@ -268,7 +268,7 @@ def generate():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/scene/<scene_id>", methods=["GET"])
+@app.route("api/scene/<scene_id>", methods=["GET"])
 def get_scene(scene_id):
     try:
         scene_path = os.path.join(RENPY_GAME_FOLDER, f"{scene_id}.json")
