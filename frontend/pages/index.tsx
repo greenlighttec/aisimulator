@@ -66,7 +66,7 @@ export default function Home() {
     const blocks = step.blocks || [];
     setSceneQueue(blocks);
 
-    const bgBlock = blocks.find((b) => b.type === "background");
+    const bgBlock = blocks.find((b: Block) => b.type === "background");
       if (bgBlock?.description) {
         setBackgroundUrl(
           "https://via.placeholder.com/1024x768?text=" +
