@@ -6,11 +6,11 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install dependencies
-COPY package.json package-lock.json* ./
+COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm install
 
 # Copy the rest of the frontend source
-COPY . .
+COPY frontend/. .
 
 # Build the Next.js app
 RUN npm run build
@@ -21,7 +21,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install production dependencies only
-COPY package.json package-lock.json* ./
+COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm install --omit=dev
 
 # Copy built app from builder stage
