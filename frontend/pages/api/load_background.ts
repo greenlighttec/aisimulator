@@ -22,11 +22,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const data = await result.json();
 
-  if (!data.url) {
-    return res.status(500).json({ error: "Failed to generate image" });
+  if (!data.background_url) {
+    return res.status(500).json({ error: "Failed to generate image", data: data });
   }
 
-  cache[scene_id] = data.url;
+  cache[scene_id] = data.background_url;
 
-  return res.json({ url: data.url });
+  return res.json({ url: data.background_url });
 }
+
