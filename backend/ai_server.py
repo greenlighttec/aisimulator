@@ -189,93 +189,35 @@ def setup_game():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# The below route is legacy and will be removed or updated at some point
-@app.route("/api/generate", methods=["POST"])
-def generate():
+@app.route("/generate_background", methods=["POST"])
+def generate_background():
     data = request.json
-    player_name = data.get("name", "Player")
-    prompt = data.get("prompt", "an adventure")
-    scene_id = data.get("scene_id", "root")
+    scene_id = data.get("scene_id")
+    description = data.get("description")
 
-    system_prompt = (
-        "You are an AI storyteller for a visual novel. "
-        "Given a player's name and story idea, generate two possible next scenes. "
-        "Each scene should have:\n"
-        "- label: a short player-facing option label\n"
-        "- scene_id: a unique string like 'scene_abc123'\n"
-        "- story: short narration (2–3 lines)\n"
-        "- character_line: something a character says\n"
-        "- background_description: a visual prompt for an AI image model\n\n"
-        "Return JSON with 'scene_id' for the current one, and 'choices' as a list of 2 scenes."
-    )
-
-    user_prompt = f"Player name: {player_name}\nPrompt: {prompt}\nCurrent Scene ID: {scene_id}"
+    if not scene_id or not description:
+        return jsonify({"error": "scene_id and description are required"}), 400
 
     try:
-        # Generate scenes with GPT-4
-        completion = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.9
+        # Generate image with DALL·E
+        dalle_response = client.images.generate(
+            model="dall-e-3",
+            prompt=description,
+            size="1024x1024",
+            quality="standard",
+            n=1
         )
 
-        # Parse the JSON result
-        reply_text = completion.choices[0].message.content
-        response_data = eval(reply_text)
+        image_url = dalle_response.data[0].url
 
-        for choice in response_data["choices"]:
-            scene_filename = f"{choice['scene_id']}.json"
-            image_filename = f"{choice['scene_id']}.jpg"
-
-            # Generate background image with DALL·E
-            dalle_response = client.images.generate(
-                model="dall-e-3",
-                prompt=choice["background_description"],
-                size="1024x1024",
-                quality="standard",
-                n=1
-            )
-
-            image_url = dalle_response.data[0].url
-            image_data = requests.get(image_url).content
-
-            # Save image
-            with open(os.path.join(RENPY_GAME_FOLDER, image_filename), "wb") as f:
-                f.write(image_data)
-
-            # Save JSON
-            with open(os.path.join(RENPY_GAME_FOLDER, scene_filename), "w", encoding="utf-8") as f:
-                json.dump(choice, f, ensure_ascii=False, indent=2)
-
+        # Optionally: download and store locally, or just return the URL
         return jsonify({
             "scene_id": scene_id,
-            "choices": [
-                {
-                    "label": response_data["choices"][0]["label"],
-                    "scene_id": response_data["choices"][0]["scene_id"]
-                },
-                {
-                    "label": response_data["choices"][1]["label"],
-                    "scene_id": response_data["choices"][1]["scene_id"]
-                }
-            ]
+            "background_url": image_url
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/scene/<scene_id>", methods=["GET"])
-def get_scene(scene_id):
-    try:
-        scene_path = os.path.join(RENPY_GAME_FOLDER, f"{scene_id}.json")
-        with open(scene_path, "r", encoding="utf-8") as f:
-            return jsonify(json.load(f))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 404
 
 
 if __name__ == "__main__":
