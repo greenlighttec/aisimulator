@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { startSession, runStep } from "@/lib/api";
+import { getBackgroundUrl, setBackgroundUrl } from "@/lib/backgroundCache";
 
 interface Block {
   type: "narration" | "dialogue" | "background" | "character_prompt" | "story_prompt";
@@ -20,8 +21,9 @@ export default function Home() {
   const [started, setStarted] = useState(false);
   const [sceneQueue, setSceneQueue] = useState<Block[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
+  const [backgroundUrl, setBackgroundUrlState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [instructions, setInstructions] = useState<string | null>(null);
 
   const currentBlock = sceneQueue[currentIndex];
 
@@ -30,11 +32,10 @@ export default function Home() {
       sceneQueue,
       currentBlock,
       currentIndex,
-      backgroundUrl,
       assistantId,
       threadId
     };
-  }, [sceneQueue, currentBlock, currentIndex, backgroundUrl, assistantId, threadId]);
+  }, [sceneQueue, currentBlock, currentIndex, assistantId, threadId]);
 
   const [speakerColors, setSpeakerColors] = useState<{ [name: string]: string }>({});
 
@@ -47,37 +48,44 @@ export default function Home() {
     return speakerColors[name] || "text-white";
   };
 
+  const updateBackground = (sceneId: string, url: string) => {
+    setBackgroundUrl(sceneId, url);
+    setBackgroundUrlState(url);
+  };
 
   const handleStart = async () => {
     setIsLoading(true);
     const res = await startSession({ name, prompt });
     setAssistantId(res.assistant_id);
     setThreadId(res.thread_id);
-    setStarted(true);
+    setInstructions(res.instructions);
+    setIsLoading(false);
+  };
 
-    // Immediately run the first step
+  const beginGame = async () => {
+    setIsLoading(true);
+    setStarted(true);
     const step = await runStep({
-      assistant_id: res.assistant_id,
-      thread_id: res.thread_id,
+      assistant_id: assistantId,
+      thread_id: threadId,
       message: `Start the story for ${name}.`
     });
-    (window as unknown as Record<string, unknown>).step = step;
-
     const blocks = step.blocks || [];
+    const sceneId = step.scene_id || "unknown_scene";
+    let background = getBackgroundUrl(sceneId);
     setSceneQueue(blocks);
 
-    const bgBlock = blocks.find((b: Block) => b.type === "background");
-      if (bgBlock?.description) {
-        setBackgroundUrl(
-          "https://via.placeholder.com/1024x768?text=" +
-            encodeURIComponent(bgBlock.description)
-        );
+    if (!background && step.description) {
+      const res = await fetch(`/api/load_background?scene_id=${sceneId}&description=${encodeURIComponent(step.description)}`);
+      const data = await res.json();
+      background = data.url;
+      updateBackground(sceneId, background);
+    } else {
+      setBackgroundUrlState(background);
     }
-
     setCurrentIndex(0);
     setIsLoading(false);
-
-};
+  };
 
   const handleAdvance = () => {
     if (currentIndex < sceneQueue.length - 1) {
@@ -90,28 +98,24 @@ export default function Home() {
     setIsLoading(true);
     setSceneQueue([]);
     setCurrentIndex(0);
-
-    const res = await runStep({ assistant_id: assistantId, thread_id: threadId, message: input });
-    (window as unknown as Record<string, unknown>).res = res;
+    const step = await runStep({ assistant_id: assistantId, thread_id: threadId, message: input });
+    const sceneId = step.scene_id || "unknown_scene";
+    let background = getBackgroundUrl(sceneId);
     setInput("");
-
-    const blocks = res.blocks as Block[];
+    const blocks = step.blocks as Block[];
     setSceneQueue(blocks);
-    setIsLoading(false);
-
-    // Preload background image if any
-    const bgBlock = blocks.find(b => b.type === "background" && b.description);
-    if (bgBlock?.description) {
-      setBackgroundUrl("https://via.placeholder.com/1024x768?text=" + encodeURIComponent(bgBlock.description));
+    if (!background && step.description) {
+      const res = await fetch(`/api/load_background?scene_id=${sceneId}&description=${encodeURIComponent(step.description)}`);
+      const data = await res.json();
+      background = data.url;
+      updateBackground(sceneId, background);
+    } else {
+      setBackgroundUrlState(background);
     }
+    setIsLoading(false);
   };
 
-  const handleChoice = async (choice: string) => {
-    setInput(choice);
-    await handleSubmit();
-  };
-
-  if (!started) {
+  if (!assistantId) {
     return (
       <main className="p-6 max-w-xl mx-auto space-y-4">
         <h1 className="text-2xl font-bold">AI Visual Novel</h1>
@@ -121,16 +125,35 @@ export default function Home() {
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <input
+        <textarea
           placeholder="Story prompt (e.g., haunted castle)"
-          className="border px-3 py-2 w-full"
+          className="border px-3 py-4 w-full h-32"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
         />
         <button onClick={handleStart} className="bg-blue-600 text-white px-4 py-2 rounded" disabled={isLoading}>
-          {isLoading ? "Starting..." : "Start Game"}
+          {isLoading ? "Preparing..." : "Generate Story Instructions"}
         </button>
       </main>
+    );
+  }
+
+  if (!started) {
+    return (
+      <div className="relative w-full h-screen overflow-hidden text-white">
+        {backgroundUrl && (
+          <img src={backgroundUrl} alt="Background" className="absolute inset-0 w-full h-full object-cover z-0" />
+        )}
+        <div className="absolute inset-0 bg-black bg-opacity-70 p-6 z-10 flex flex-col items-center justify-center">
+          <h2 className="text-2xl font-bold mb-4">Story Setup Instructions</h2>
+          <pre className="bg-gray-900 text-green-300 p-4 rounded w-full max-w-3xl max-h-96 overflow-auto text-sm whitespace-pre-wrap">
+            {instructions}
+          </pre>
+          <button onClick={beginGame} className="mt-4 bg-blue-600 text-white px-6 py-2 rounded">
+            Begin Story
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -139,69 +162,27 @@ export default function Home() {
       {backgroundUrl && (
         <img src={backgroundUrl} alt="Background" className="absolute inset-0 w-full h-full object-cover z-0" />
       )}
-
       <div className="absolute bottom-0 left-0 right-0 z-10 bg-black bg-opacity-60 p-6">
-        {currentBlock && currentBlock.type === "dialogue" && (
+        {currentBlock?.type === "dialogue" && (
           <div>
             <div className={`font-bold mb-1 ${getColorForSpeaker(currentBlock.speaker || "")}`}>{currentBlock.speaker}</div>
             <div className={`${getColorForSpeaker(currentBlock.speaker || "")}`}>{currentBlock.text}</div>
           </div>
         )}
-
-        {currentBlock && currentBlock.type === "narration" && (
+        {currentBlock?.type === "narration" && (
           <div className="text-center italic">{currentBlock.text}</div>
         )}
-
-        {currentBlock && currentBlock.type === "background" && (
-          <div className="text-center text-sm italic text-gray-300">
-            Scene: {currentBlock.description}
-          </div>
+        {currentBlock?.type === "background" && (
+          <div className="text-center text-sm italic text-gray-300">Scene: {currentBlock.description}</div>
         )}
-
-        {currentBlock && currentBlock.type === "character_prompt" && (
+        {currentBlock?.type === "character_prompt" && (
           <div className="space-y-2">
             <div className="text-yellow-300">Character: {currentBlock.character}</div>
             <div className="italic">{currentBlock.question}</div>
-          <div className="mt-4 flex gap-2">
-            <input
-              className="flex-1 p-2 bg-white text-black rounded"
-              placeholder="Describe this character..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-            />
-            <button
-              onClick={handleSubmit}
-              className="bg-blue-600 text-white px-4 py-2 rounded"
-              disabled={isLoading || !input.trim()}
-            >
-              Go
-            </button>
-          </div> 
-          </div>
-        )}
-
-       {currentBlock && currentBlock.type === "story_prompt" && (
-          <div className="space-y-2">
-            <div className="text-yellow-300">Character: {currentBlock.character}</div>
-            <div className="italic">{currentBlock.question}</div>
-            <div className="space-y-2">
-            <div className="italic">What will you do?</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {currentBlock.choices?.map((option, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleChoice(option)}
-                  className="bg-white text-black px-4 py-2 rounded hover:bg-gray-200"
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
             <div className="mt-4 flex gap-2">
               <input
                 className="flex-1 p-2 bg-white text-black rounded"
-                placeholder="Or enter your own..."
+                placeholder="Describe this character..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
@@ -215,16 +196,49 @@ export default function Home() {
               </button>
             </div>
           </div>
+        )}
+        {currentBlock?.type === "story_prompt" && (
+          <div className="space-y-2">
+            <div className="text-yellow-300">Character: {currentBlock.character}</div>
+            <div className="italic">{currentBlock.question}</div>
+            <div className="space-y-2">
+              <div className="italic">What will you do?</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {currentBlock.choices?.map((option, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setInput(option)}
+                    className="bg-white text-black px-4 py-2 rounded hover:bg-gray-200"
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 flex gap-2">
+                <input
+                  className="flex-1 p-2 bg-white text-black rounded"
+                  placeholder="Or enter your own..."
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                />
+                <button
+                  onClick={handleSubmit}
+                  className="bg-blue-600 text-white px-4 py-2 rounded"
+                  disabled={isLoading || !input.trim()}
+                >
+                  Go
+                </button>
+              </div>
+            </div>
           </div>
         )}
-
-        {!isLoading && currentBlock && currentBlock.type !== "character_prompt" && currentBlock.type !== "story_prompt" && currentIndex < sceneQueue.length - 1 && (
+        {!isLoading && currentBlock && !["character_prompt", "story_prompt"].includes(currentBlock.type) && currentIndex < sceneQueue.length - 1 && (
           <button onClick={handleAdvance} className="mt-4 bg-white text-black px-4 py-2 rounded">
             Continue
           </button>
         )}
-
-        </div>
+      </div>
     </div>
   );
 }
