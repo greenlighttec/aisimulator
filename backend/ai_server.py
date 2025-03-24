@@ -204,7 +204,7 @@ def setup_game():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/generate_background", methods=["POST"])
+@app.route("/api/generate_background", methods=["POST"])
 def generate_background():
     data = request.json
     scene_id = data.get("scene_id")
