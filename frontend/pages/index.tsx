@@ -48,7 +48,8 @@ export default function Home() {
     return speakerColors[name] || "text-white";
   };
 
-  const updateBackground = (sceneId: string, url: string) => {
+  const updateBackground = (sceneId: string, url: string | null) => {
+    if (!url) return;
     setBackgroundUrl(sceneId, url);
     setBackgroundUrlState(url);
   };
