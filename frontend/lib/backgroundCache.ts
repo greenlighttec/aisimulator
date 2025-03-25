@@ -1,8 +1,14 @@
 const KEY = "scene_backgrounds";
 
+function getStorage() {
+  if (typeof window === "undefined") return null;
+  return sessionStorage;
+}
+
 export function getBackgroundMap(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const raw = localStorage.getItem(KEY);
+  const storage = getStorage();
+  if (!storage) return {};
+  const raw = storage.getItem(KEY);
   try {
     return raw ? JSON.parse(raw) : {};
   } catch {
@@ -11,9 +17,11 @@ export function getBackgroundMap(): Record<string, string> {
 }
 
 export function setBackgroundUrl(sceneId: string, url: string) {
+  const storage = getStorage();
+  if (!storage) return;
   const map = getBackgroundMap();
   map[sceneId] = url;
-  localStorage.setItem(KEY, JSON.stringify(map));
+  storage.setItem(KEY, JSON.stringify(map));
 }
 
 export function getBackgroundUrl(sceneId: string): string | null {
