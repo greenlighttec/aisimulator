@@ -24,7 +24,8 @@ export default function Home() {
   const [backgroundUrl, setBackgroundUrlState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [instructions, setInstructions] = useState<string | null>(null);
-  const [preloadedStep, setPreloadedStep] = useState<any>(null);
+  const [preloadedStep, setPreloadedStep] = useState<Record<string, any> | null>(null);
+
 
   const currentBlock = sceneQueue[currentIndex];
 
