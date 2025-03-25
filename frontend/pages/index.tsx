@@ -24,6 +24,7 @@ export default function Home() {
   const [backgroundUrl, setBackgroundUrlState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [instructions, setInstructions] = useState<string | null>(null);
+  const [preloadedStep, setPreloadedStep] = useState<any>(null);
 
   const currentBlock = sceneQueue[currentIndex];
 
@@ -48,8 +49,7 @@ export default function Home() {
     return speakerColors[name] || "text-white";
   };
 
-  const updateBackground = (sceneId: string, url: string | null) => {
-    if (!url) return;
+  const updateBackground = (sceneId: string, url: string) => {
     setBackgroundUrl(sceneId, url);
     setBackgroundUrlState(url);
   };
@@ -60,30 +60,36 @@ export default function Home() {
     setAssistantId(res.assistant_id);
     setThreadId(res.thread_id);
     setInstructions(res.instructions);
-    setIsLoading(false);
-  };
 
-  const beginGame = async () => {
-    setIsLoading(true);
-    setStarted(true);
+    // Preload the first step while user reads instructions
     const step = await runStep({
-      assistant_id: assistantId,
-      thread_id: threadId,
+      assistant_id: res.assistant_id,
+      thread_id: res.thread_id,
       message: `Start the story for ${name}.`
     });
-    const blocks = step.blocks || [];
+    setPreloadedStep(step);
+
     const sceneId = step.scene_id || "unknown_scene";
     let background = getBackgroundUrl(sceneId);
-    setSceneQueue(blocks);
 
     if (!background && step.description) {
-      const res = await fetch(`/api/load_background?scene_id=${sceneId}&description=${encodeURIComponent(step.description)}`);
-      const data = await res.json();
+      const resBg = await fetch(`/api/load_background?scene_id=${sceneId}&description=${encodeURIComponent(step.description)}`);
+      const data = await resBg.json();
       background = data.url;
       updateBackground(sceneId, background);
     } else {
       setBackgroundUrlState(background);
     }
+
+    setIsLoading(false);
+  };
+
+  const beginGame = async () => {
+    if (!preloadedStep) return;
+    setIsLoading(true);
+    setStarted(true);
+    const blocks = preloadedStep.blocks || [];
+    setSceneQueue(blocks);
     setCurrentIndex(0);
     setIsLoading(false);
   };
@@ -106,7 +112,7 @@ export default function Home() {
     const blocks = step.blocks as Block[];
     setSceneQueue(blocks);
     if (!background && step.description) {
-      const res = await fetch(`/api/load_background?scene_id=${sceneId}&description=${encodeURIComponent(step.description)}`);
+      const res = await fetch(`/api/get_or_generate_background?scene_id=${sceneId}&description=${encodeURIComponent(step.description)}`);
       const data = await res.json();
       background = data.url;
       updateBackground(sceneId, background);
