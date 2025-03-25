@@ -114,7 +114,7 @@ export default function Home() {
     const blocks = step.blocks as Block[];
     setSceneQueue(blocks);
     if (!background && step.description) {
-      const res = await fetch(`/api/get_or_generate_background?scene_id=${sceneId}&description=${encodeURIComponent(step.description)}`);
+      const res = await fetch(`/api/load_background?scene_id=${sceneId}&description=${encodeURIComponent(step.description)}`);
       const data = await res.json();
       background = data.url;
       updateBackground(sceneId, background);
