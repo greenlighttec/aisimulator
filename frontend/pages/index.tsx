@@ -51,6 +51,7 @@ export default function Home() {
   };
 
   const updateBackground = (sceneId: string, url: string | null) => {
+    if (!url) return;
     setBackgroundUrl(sceneId, url);
     setBackgroundUrlState(url);
   };
