@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-const cache: Record<string, string> = {};
+// const cache: Record<string, string> = {}; // Disable Server side cache
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 
@@ -10,9 +10,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "Missing scene_id or description" });
   }
 
-  if (cache[scene_id]) {
+/*  if (cache[scene_id]) {
     return res.json({ url: cache[scene_id] });
-  }
+  } */
 
   const result = await fetch(`${BASE_URL}/generate_background`, {
     method: "POST",
@@ -26,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ error: "Failed to generate image", data: data });
   }
 
-  cache[scene_id] = data.background_url;
+  // cache[scene_id] = data.background_url;
 
   return res.json({ url: data.background_url });
 }
