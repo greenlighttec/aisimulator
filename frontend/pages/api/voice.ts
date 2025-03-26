@@ -28,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(500).json({ error: "No response body from upstream" });
     }
 
-    const webStream = response.body as ReadableStream<Uint8Array>;
+    const webStream = response.body as ReadableStream<any>;
     
     if (typeof Readable.fromWeb !== "function") {
       return res.status(500).json({ error: "Readable.fromWeb not supported in this Node version" });
