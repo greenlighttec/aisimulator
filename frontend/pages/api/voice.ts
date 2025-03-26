@@ -29,20 +29,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    const webStream = upstreamResponse.body;
-
-    if (!webStream) {
-      return res.status(500).json({ error: "Upstream response had no body" });
+    const webStream = upstreamResponse.body as unknown as ReadableStream<Uint8Array>;
+    
+    // runtime guard
+    if (typeof (Readable as any).fromWeb !== "function") {
+      return res.status(500).json({ error: "Readable.fromWeb is not supported in this environment" });
     }
-
-    // Node 18+ required
-    if (typeof Readable.fromWeb !== "function") {
-      return res
-        .status(500)
-        .json({ error: "Readable.fromWeb is not supported in this environment" });
-    }
-
-    const nodeStream = Readable.fromWeb(webStream as ReadableStream<Uint8Array>);
+    
+    // force-cast to allow use
+    const nodeStream = (Readable as any).fromWeb(webStream);
     res.setHeader("Content-Type", "audio/mpeg");
     nodeStream.pipe(res);
   } catch (error: unknown) {
