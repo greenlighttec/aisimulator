@@ -2,6 +2,24 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { Readable } from "stream";
 import { BASE_URL } from "@/lib/config";
 
+function readableStreamToNodeStream(webStream: ReadableStream<Uint8Array>): Readable {
+  const reader = webStream.getReader();
+  return new Readable({
+    async read() {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          this.push(null); // Signal end of stream
+        } else {
+          this.push(Buffer.from(value)); // Push data to the Node.js stream
+        }
+      } catch (err) {
+        this.destroy(err instanceof Error ? err : new Error(String(err))); // Ensure the error is of type Error
+      }
+    },
+  });
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
@@ -29,15 +47,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    const webStream = upstreamResponse.body as unknown as ReadableStream<Uint8Array>;
-    
-    // runtime guard
-    if (typeof (Readable as any).fromWeb !== "function") {
-      return res.status(500).json({ error: "Readable.fromWeb is not supported in this environment" });
-    }
-    
-    // force-cast to allow use
-    const nodeStream = (Readable as any).fromWeb(webStream);
+    const webStream = upstreamResponse.body as ReadableStream<Uint8Array>;
+
+    // Convert ReadableStream to Node.js Readable
+    const nodeStream = readableStreamToNodeStream(webStream);
     res.setHeader("Content-Type", "audio/mpeg");
     nodeStream.pipe(res);
   } catch (error: unknown) {
