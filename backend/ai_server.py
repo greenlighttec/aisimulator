@@ -6,6 +6,8 @@ import requests
 import json
 import uuid
 
+from voicegen import text_to_voice_stream
+
 app = Flask(__name__)
 CORS(app)
 
