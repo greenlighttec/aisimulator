@@ -234,6 +234,18 @@ def generate_background():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/voice", methods=["POST"])
+def voice_stream():
+    data = request.json
+    text = data.get("text", "")
+    if not text:
+        return {"error": "Missing text"}, 400
+
+    try:
+        stream = text_to_voice_stream(text)
+        return Response(stream, content_type="audio/mpeg")
+    except Exception as e:
+        return {"error": str(e)}, 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
