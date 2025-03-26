@@ -33,7 +33,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const upstreamResponse = await fetch(`${BASE_URL}/api/voice`, {
+    const upstreamResponse = await fetch(`${BASE_URL}/voice`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
