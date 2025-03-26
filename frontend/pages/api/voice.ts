@@ -27,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!response.body) {
       return res.status(500).json({ error: "No response body from upstream" });
     }
-
+    // @ts-ignore - type mismatch between Web and Node stream, but works at runtime
     const webStream = response.body as ReadableStream<any>;
     
     if (typeof Readable.fromWeb !== "function") {
