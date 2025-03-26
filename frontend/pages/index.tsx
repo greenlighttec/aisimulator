@@ -25,6 +25,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [instructions, setInstructions] = useState<string | null>(null);
   const [preloadedStep, setPreloadedStep] = useState<Awaited<ReturnType<typeof runStep>> | null>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
 
 
   const currentBlock = sceneQueue[currentIndex];
@@ -143,6 +144,14 @@ export default function Home() {
         <button onClick={handleStart} className="bg-blue-600 text-white px-4 py-2 rounded" disabled={isLoading}>
           {isLoading ? "Preparing..." : "Generate Story Instructions"}
         </button>
+        <div className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={voiceEnabled}
+          onChange={(e) => setVoiceEnabled(e.target.checked)}
+        />
+        <label>Enable Voice Narration</label>
+      </div>
       </main>
     );
   }
