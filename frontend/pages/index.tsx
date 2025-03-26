@@ -40,6 +40,27 @@ export default function Home() {
     };
   }, [sceneQueue, currentBlock, currentIndex, assistantId, threadId]);
 
+  useEffect(() => {
+  if (
+    voiceEnabled &&
+    currentBlock &&
+    ["narration", "dialogue"].includes(currentBlock.type) &&
+    currentBlock.text
+  ) {
+    fetch("/api/voice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: currentBlock.text })
+    })
+      .then((res) => res.blob())
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.play();
+      });
+  }
+}, [currentBlock, voiceEnabled]);
+
   const [speakerColors, setSpeakerColors] = useState<{ [name: string]: string }>({});
 
   const getColorForSpeaker = (name: string) => {
