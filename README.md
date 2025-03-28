@@ -65,3 +65,77 @@ docker run -p 3000:3000 visualnovel-frontend
 cd backend
 docker build -t visualnovel-backend .
 docker run -p 5000:5000 -e OPENAI_API_KEY=sk-... visualnovel-backend
+
+---
+
+## Some Story suggestions
+
+### Rescuing the Princess
+```I'd like to play a story where I must rescue the princess from a castle.
+
+The narrator should track karma across at least two axes: Virtue (kindness, mercy, heroism) and Vice (violence, selfishness, manipulation).
+
+Actions I take should increase or decrease these karma values.
+
+I want multiple solutions to the main goal, like:
+- Sneaking in and freeing her without violence (requires high Virtue)
+- Convincing the guards to let her go (requires high Charisma and medium Virtue)
+- Storming the castle and taking her by force (requires high Vice)
+
+At every major decision point:
+- The narrator should calculate my current karma levels.
+- If I try something that requires more karma than I have, I want the narrator to:
+  - Deny the action.
+  - Explain the karma required vs what I currently have.
+  - Suggest alternative actions that would raise the needed karma.
+
+Only one path to rescue the princess should be possible based on how I play. Lock out incompatible paths as I progress. Let me know how karma changes based on my choices.```
+
+### Cyber Attack Training Simular
+```You're Alex, a mid-level IT technician working at SentinelCore, a small but ambitious MSP based out of Chicago. It's 8:12 AM on a rainy Thursday when your phone buzzes with a flood of client alerts. At first, it seems like the usual noise: a failed backup here, a locked-out user there. But a creeping sense of dread builds as more and more systems begin to go dark.
+
+You’re under attack.
+One of your clients — a law firm with poor security hygiene — has been hit by ransomware, and the infection is spreading through your remote management tools like wildfire. Servers are being encrypted. Critical client data is at risk. Your team is scattered, leadership is panicking, and the phone lines are lighting up.
+
+You must:
+
+Assess the scope of the incident.
+
+Contain the breach, deciding what to shut down, isolate, or let burn.
+
+Communicate with your panicked clients and teammates while keeping cool under pressure.
+
+Decide whether to report to authorities, insurers, or quietly attempt recovery.
+
+Balance priorities: client relationships, legal liability, data integrity, and your own career.
+
+You’ll face:
+
+Ethical dilemmas (do you admit fault? do you spin the truth?).
+
+Technical tradeoffs (do you nuke a system to stop the spread or try to salvage it?).
+
+Social stressors (teammates who are in over their heads, clients who want blood, bosses who vanish).
+
+Psychological fatigue and personal growth — or breakdown.
+
+The story evolves based on your responses:
+
+Do you become the unsung hero, rising above the chaos?
+
+Or the quiet fall guy, scapegoated for systemic failures?
+
+Maybe even a gray-hat operator, bending rules to save the day at a moral cost?
+
+Your decisions shape your character’s reputation, trustworthiness, and future.
+Every conversation, action, or hesitation feeds into invisible karma meters like:
+
+🧠 Logic vs. 🧯 Panic
+
+🛡️ Duty vs. 💸 Self-preservation
+
+🧍 Isolation vs. 🤝 Collaboration
+
+🧭 Integrity vs. 🎭 Spin
+
+This isn't just incident response — it's your professional crucible.```
