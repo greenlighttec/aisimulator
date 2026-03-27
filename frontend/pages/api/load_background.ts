@@ -9,7 +9,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "Missing scene_id or description" });
   }
 
-  const result = await fetch(`${BASE_URL}/generate_background`, {
+  const result = await fetch(`${BASE_URL}/api/generate_background`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scene_id, description }),

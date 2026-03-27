@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { startSession, runStep } from "@/lib/api";
 import { getBackgroundUrl, setBackgroundUrl } from "@/lib/backgroundCache";
 
 interface Block {
-  type: "narration" | "dialogue" | "background" | "character_prompt" | "story_prompt";
+  type: "narration" | "dialogue" | "character_prompt" | "story_prompt";
   text?: string;
   speaker?: string;
   description?: string;
@@ -61,15 +61,15 @@ export default function Home() {
   }
 }, [currentBlock, voiceEnabled]);
 
-  const [speakerColors, setSpeakerColors] = useState<{ [name: string]: string }>({});
+  const speakerColorsRef = useRef<{ [name: string]: string }>({});
 
   const getColorForSpeaker = (name: string) => {
-    if (!speakerColors[name]) {
+    if (!speakerColorsRef.current[name]) {
       const colors = ["text-red-400", "text-green-400", "text-blue-400", "text-yellow-400", "text-purple-400"];
-      const color = colors[Object.keys(speakerColors).length % colors.length];
-      setSpeakerColors((prev) => ({ ...prev, [name]: color }));
+      const color = colors[Object.keys(speakerColorsRef.current).length % colors.length];
+      speakerColorsRef.current[name] = color;
     }
-    return speakerColors[name] || "text-white";
+    return speakerColorsRef.current[name];
   };
 
   const updateBackground = (sceneId: string, url: string | null) => {
@@ -93,7 +93,7 @@ export default function Home() {
     });
     setPreloadedStep(step);
 
-    const sceneId = step.scene_id || "unknown_scene";
+    const sceneId = String(step.scene_id || "unknown_scene");
     let background = getBackgroundUrl(sceneId);
 
     if (!background && step.description) {
@@ -130,7 +130,7 @@ export default function Home() {
     setSceneQueue([]);
     setCurrentIndex(0);
     const step = await runStep({ assistant_id: assistantId, thread_id: threadId, message: input });
-    const sceneId = step.scene_id || "unknown_scene";
+    const sceneId = String(step.scene_id || "unknown_scene");
     let background = getBackgroundUrl(sceneId);
     setInput("");
     const blocks = step.blocks as Block[];
@@ -210,9 +210,6 @@ export default function Home() {
         )}
         {currentBlock?.type === "narration" && (
           <div className="text-center italic">{currentBlock.text}</div>
-        )}
-        {currentBlock?.type === "background" && (
-          <div className="text-center text-sm italic text-gray-300">Scene: {currentBlock.description}</div>
         )}
         {currentBlock?.type === "character_prompt" && (
           <div className="space-y-2">

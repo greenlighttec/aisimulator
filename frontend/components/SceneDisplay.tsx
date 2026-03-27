@@ -5,8 +5,8 @@ type Props = {
   background: string
   story: string
   characterLine: string
-  choices: { label: string; scene_id: string }[]
-  onChoice: (id: string) => void
+  choices: string[]
+  onChoice: (choice: string) => void
 }
 
 export default function SceneDisplay({ background, story, characterLine, choices, onChoice }: Props) {
@@ -26,7 +26,7 @@ export default function SceneDisplay({ background, story, characterLine, choices
         <div className="text-lg leading-relaxed max-h-1/2 overflow-y-auto">
           <p className="mb-4 whitespace-pre-wrap">{story}</p>
           {characterLine && (
-            <p className="text-yellow-300 font-semibold mt-2">“{characterLine}”</p>
+            <p className="text-yellow-300 font-semibold mt-2">"{characterLine}"</p>
           )}
         </div>
 

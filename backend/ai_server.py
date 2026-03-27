@@ -4,7 +4,7 @@ import openai
 import os
 import requests
 import json
-import uuid
+import time
 
 from voicegen import text_to_voice_stream
 
@@ -38,17 +38,19 @@ def run_step():
 
     try:
         if is_buffer:
+            # Add the player's message with prebuffer context
             client.beta.threads.messages.create(
                 thread_id=thread_id,
-                role="system",
-                content="[This is prebuffering request. Please continue the story assuming the player might choose this branch, but do not assume it has been selected. Continue naturally from the current context.]"
+                role="user",
+                content=f"[This is a prebuffering request. Please continue the story assuming the player might choose this branch, but do not assume it has been selected. Continue naturally from the current context.]\n\n{player_input}"
             )
-        # Add the player's message to the thread
-        client.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="user",
-            content=player_input
-        )
+        else:
+            # Add the player's message to the thread
+            client.beta.threads.messages.create(
+                thread_id=thread_id,
+                role="user",
+                content=player_input
+            )
 
         # Create the run (non-streaming)
         run = client.beta.threads.runs.create(
@@ -57,7 +59,6 @@ def run_step():
         )
 
         # Poll for completion
-        import time
         while True:
             run_status = client.beta.threads.runs.retrieve(run.id, thread_id=thread_id)
             if run_status.status in ["completed", "failed", "cancelled"]:
