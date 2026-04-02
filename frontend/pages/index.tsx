@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { startSession, runStep } from "@/lib/api";
 import { getBackgroundUrl, setBackgroundUrl } from "@/lib/backgroundCache";
+import { getCharacterMoodUrl, hasCharacter, setCharacterMoods } from "@/lib/characterCache";
 
 interface Block {
   type: "narration" | "dialogue" | "character_prompt" | "story_prompt";
   text?: string;
   speaker?: string;
+  appearance?: string;
+  mood?: "neutral" | "happy" | "sad" | "excited";
   description?: string;
   character?: string;
   question?: string;
@@ -26,7 +29,10 @@ export default function Home() {
   const [instructions, setInstructions] = useState<string | null>(null);
   const [preloadedStep, setPreloadedStep] = useState<Awaited<ReturnType<typeof runStep>> | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [characterSpriteUrl, setCharacterSpriteUrl] = useState<string | null>(null);
 
+  // Track which characters are currently being generated to avoid duplicate requests
+  const generatingCharactersRef = useRef<Set<string>>(new Set());
 
   const currentBlock = sceneQueue[currentIndex];
 
@@ -41,25 +47,75 @@ export default function Home() {
   }, [sceneQueue, currentBlock, currentIndex, assistantId, threadId]);
 
   useEffect(() => {
-  if (
-    voiceEnabled &&
-    currentBlock &&
-    ["narration", "dialogue"].includes(currentBlock.type) &&
-    currentBlock.text
-  ) {
-    fetch("/api/voice", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: currentBlock.text })
-    })
-      .then((res) => res.blob())
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.play();
-      });
-  }
-}, [currentBlock, voiceEnabled]);
+    if (
+      voiceEnabled &&
+      currentBlock &&
+      ["narration", "dialogue"].includes(currentBlock.type) &&
+      currentBlock.text
+    ) {
+      fetch("/api/voice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: currentBlock.text })
+      })
+        .then((res) => res.blob())
+        .then((blob) => {
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.play();
+        });
+    }
+  }, [currentBlock, voiceEnabled]);
+
+  // Handle character sprite display and generation
+  useEffect(() => {
+    if (!currentBlock || currentBlock.type !== "dialogue" || !currentBlock.speaker) {
+      setCharacterSpriteUrl(null);
+      return;
+    }
+
+    const speaker = currentBlock.speaker;
+    const mood = currentBlock.mood || "neutral";
+
+    // Check cache for existing mood image
+    const cachedUrl = getCharacterMoodUrl(speaker, mood);
+    if (cachedUrl) {
+      setCharacterSpriteUrl(cachedUrl);
+      return;
+    }
+
+    // If this character has an appearance and hasn't been generated yet, generate them
+    if (currentBlock.appearance && !hasCharacter(speaker) && !generatingCharactersRef.current.has(speaker)) {
+      generatingCharactersRef.current.add(speaker);
+      setCharacterSpriteUrl(null);
+
+      fetch("/api/generate_character", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          character: speaker,
+          description: currentBlock.appearance
+        })
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.moods) {
+            setCharacterMoods(speaker, data.moods);
+            // Show the current mood now that it's ready
+            const url = data.moods[mood] || data.moods["neutral"];
+            if (url) setCharacterSpriteUrl(url);
+          }
+        })
+        .catch((err) => console.error("Character generation failed:", err))
+        .finally(() => generatingCharactersRef.current.delete(speaker));
+    } else if (hasCharacter(speaker)) {
+      // Character exists but we don't have this specific mood cached — show neutral fallback
+      const fallback = getCharacterMoodUrl(speaker, "neutral");
+      setCharacterSpriteUrl(fallback);
+    } else {
+      setCharacterSpriteUrl(null);
+    }
+  }, [currentBlock]);
 
   const speakerColorsRef = useRef<{ [name: string]: string }>({});
 
@@ -76,6 +132,37 @@ export default function Home() {
     if (!url) return;
     setBackgroundUrl(sceneId, url);
     setBackgroundUrlState(url);
+  };
+
+  // Scan blocks for new characters and pre-generate their portraits
+  const preGenerateCharacters = (blocks: Block[]) => {
+    for (const block of blocks) {
+      if (
+        block.type === "dialogue" &&
+        block.speaker &&
+        block.appearance &&
+        !hasCharacter(block.speaker) &&
+        !generatingCharactersRef.current.has(block.speaker)
+      ) {
+        generatingCharactersRef.current.add(block.speaker);
+        fetch("/api/generate_character", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            character: block.speaker,
+            description: block.appearance
+          })
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.moods) {
+              setCharacterMoods(block.speaker!, data.moods);
+            }
+          })
+          .catch((err) => console.error("Character pre-generation failed:", err))
+          .finally(() => generatingCharactersRef.current.delete(block.speaker!));
+      }
+    }
   };
 
   const handleStart = async () => {
@@ -105,6 +192,11 @@ export default function Home() {
       setBackgroundUrlState(background);
     }
 
+    // Pre-generate characters while user reads instructions
+    if (step.blocks) {
+      preGenerateCharacters(step.blocks);
+    }
+
     setIsLoading(false);
   };
 
@@ -129,12 +221,17 @@ export default function Home() {
     setIsLoading(true);
     setSceneQueue([]);
     setCurrentIndex(0);
+    setCharacterSpriteUrl(null);
     const step = await runStep({ assistant_id: assistantId, thread_id: threadId, message: input });
     const sceneId = String(step.scene_id || "unknown_scene");
     let background = getBackgroundUrl(sceneId);
     setInput("");
     const blocks = step.blocks as Block[];
     setSceneQueue(blocks);
+
+    // Pre-generate any new characters in this scene
+    preGenerateCharacters(blocks);
+
     if (!background && step.description) {
       const res = await fetch(`/api/load_background?scene_id=${sceneId}&description=${encodeURIComponent(step.description)}`);
       const data = await res.json();
@@ -166,13 +263,13 @@ export default function Home() {
           {isLoading ? "Preparing..." : "Generate Story Instructions"}
         </button>
         <div className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={voiceEnabled}
-          onChange={(e) => setVoiceEnabled(e.target.checked)}
-        />
-        <label>Enable Voice Narration</label>
-      </div>
+          <input
+            type="checkbox"
+            checked={voiceEnabled}
+            onChange={(e) => setVoiceEnabled(e.target.checked)}
+          />
+          <label>Enable Voice Narration</label>
+        </div>
       </main>
     );
   }
@@ -201,9 +298,21 @@ export default function Home() {
       {backgroundUrl && (
         <img src={backgroundUrl} alt="Background" className="absolute inset-0 w-full h-full object-cover z-0" />
       )}
-      <div className="absolute bottom-0 left-0 right-0 z-10 bg-black bg-opacity-60 p-6">
+
+      {/* Character sprite */}
+      {characterSpriteUrl && currentBlock?.type === "dialogue" && (
+        <div className="absolute bottom-32 left-8 z-10">
+          <img
+            src={characterSpriteUrl}
+            alt={currentBlock.speaker || "Character"}
+            className="h-80 w-auto object-contain drop-shadow-lg"
+          />
+        </div>
+      )}
+
+      <div className="absolute bottom-0 left-0 right-0 z-20 bg-black bg-opacity-60 p-6">
         {currentBlock?.type === "dialogue" && (
-          <div>
+          <div className={characterSpriteUrl ? "ml-72" : ""}>
             <div className={`font-bold mb-1 ${getColorForSpeaker(currentBlock.speaker || "")}`}>{currentBlock.speaker}</div>
             <div className={`${getColorForSpeaker(currentBlock.speaker || "")}`}>{currentBlock.text}</div>
           </div>
