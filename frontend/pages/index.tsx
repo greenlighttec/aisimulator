@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { startSession, runStep } from "@/lib/api";
 import { getBackgroundUrl, setBackgroundUrl } from "@/lib/backgroundCache";
 import { getCharacterMoodUrl, hasCharacter, setCharacterMoods } from "@/lib/characterCache";
@@ -13,6 +13,12 @@ interface Block {
   character?: string;
   question?: string;
   choices?: string[];
+}
+
+interface PrefetchedScene {
+  step: Record<string, unknown>;
+  blocks: Block[];
+  backgroundUrl: string | null;
 }
 
 export default function Home() {
@@ -31,7 +37,11 @@ export default function Home() {
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [characterSpriteUrl, setCharacterSpriteUrl] = useState<string | null>(null);
 
-  // Track which characters are currently being generated to avoid duplicate requests
+  // Prefetch cache: maps choice text -> fully loaded scene data
+  const prefetchCacheRef = useRef<Map<string, PrefetchedScene>>(new Map());
+  // Track in-flight prefetch requests to avoid duplicates
+  const prefetchingRef = useRef<Set<string>>(new Set());
+  // Track which characters are currently being generated
   const generatingCharactersRef = useRef<Set<string>>(new Set());
 
   const currentBlock = sceneQueue[currentIndex];
@@ -42,7 +52,8 @@ export default function Home() {
       currentBlock,
       currentIndex,
       assistantId,
-      threadId
+      threadId,
+      prefetchCache: Object.fromEntries(prefetchCacheRef.current),
     };
   }, [sceneQueue, currentBlock, currentIndex, assistantId, threadId]);
 
@@ -77,14 +88,12 @@ export default function Home() {
     const speaker = currentBlock.speaker;
     const mood = currentBlock.mood || "neutral";
 
-    // Check cache for existing mood image
     const cachedUrl = getCharacterMoodUrl(speaker, mood);
     if (cachedUrl) {
       setCharacterSpriteUrl(cachedUrl);
       return;
     }
 
-    // If this character has an appearance and hasn't been generated yet, generate them
     if (currentBlock.appearance && !hasCharacter(speaker) && !generatingCharactersRef.current.has(speaker)) {
       generatingCharactersRef.current.add(speaker);
       setCharacterSpriteUrl(null);
@@ -92,16 +101,12 @@ export default function Home() {
       fetch("/api/generate_character", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          character: speaker,
-          description: currentBlock.appearance
-        })
+        body: JSON.stringify({ character: speaker, description: currentBlock.appearance })
       })
         .then((res) => res.json())
         .then((data) => {
           if (data.moods) {
             setCharacterMoods(speaker, data.moods);
-            // Show the current mood now that it's ready
             const url = data.moods[mood] || data.moods["neutral"];
             if (url) setCharacterSpriteUrl(url);
           }
@@ -109,7 +114,6 @@ export default function Home() {
         .catch((err) => console.error("Character generation failed:", err))
         .finally(() => generatingCharactersRef.current.delete(speaker));
     } else if (hasCharacter(speaker)) {
-      // Character exists but we don't have this specific mood cached — show neutral fallback
       const fallback = getCharacterMoodUrl(speaker, "neutral");
       setCharacterSpriteUrl(fallback);
     } else {
@@ -134,8 +138,8 @@ export default function Home() {
     setBackgroundUrlState(url);
   };
 
-  // Scan blocks for new characters and pre-generate their portraits
-  const preGenerateCharacters = (blocks: Block[]) => {
+  // Pre-generate character portraits for blocks that have new characters
+  const preGenerateCharacters = useCallback((blocks: Block[]) => {
     for (const block of blocks) {
       if (
         block.type === "dialogue" &&
@@ -148,10 +152,7 @@ export default function Home() {
         fetch("/api/generate_character", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            character: block.speaker,
-            description: block.appearance
-          })
+          body: JSON.stringify({ character: block.speaker, description: block.appearance })
         })
           .then((res) => res.json())
           .then((data) => {
@@ -163,7 +164,82 @@ export default function Home() {
           .finally(() => generatingCharactersRef.current.delete(block.speaker!));
       }
     }
-  };
+  }, []);
+
+  // Load background for a scene, returns the URL
+  const loadBackground = useCallback(async (step: Record<string, unknown>): Promise<string | null> => {
+    const sceneId = String(step.scene_id || "unknown_scene");
+    let background = getBackgroundUrl(sceneId);
+
+    if (!background && step.description) {
+      const res = await fetch(
+        `/api/load_background?scene_id=${sceneId}&description=${encodeURIComponent(step.description as string)}`
+      );
+      const data = await res.json();
+      background = data.url;
+      if (background) {
+        setBackgroundUrl(sceneId, background);
+      }
+    }
+    return background;
+  }, []);
+
+  // Prefetch a single choice: run_step (buffered) + background + characters
+  const prefetchChoice = useCallback(async (choice: string, aId: string, tId: string) => {
+    if (prefetchCacheRef.current.has(choice) || prefetchingRef.current.has(choice)) return;
+    prefetchingRef.current.add(choice);
+
+    try {
+      // Step 1: Get the AI response for this choice (buffered)
+      const step = await runStep({
+        assistant_id: aId,
+        thread_id: tId,
+        message: choice,
+        is_buffer: true,
+      });
+
+      const blocks = (step.blocks || []) as Block[];
+
+      // Step 2: Load background and pre-generate characters in parallel
+      const [backgroundUrl] = await Promise.all([
+        loadBackground(step),
+        // Fire-and-forget character generation
+        Promise.resolve(preGenerateCharacters(blocks)),
+      ]);
+
+      prefetchCacheRef.current.set(choice, {
+        step,
+        blocks,
+        backgroundUrl,
+      });
+    } catch (err) {
+      console.error(`Prefetch failed for choice "${choice}":`, err);
+    } finally {
+      prefetchingRef.current.delete(choice);
+    }
+  }, [loadBackground, preGenerateCharacters]);
+
+  // Look-ahead prefetch: find the story_prompt in the current scene queue
+  // and start prefetching as soon as blocks are loaded (even while player
+  // is still reading narration/dialogue). This gives maximum lead time.
+  useEffect(() => {
+    if (!assistantId || !threadId || sceneQueue.length === 0) return;
+
+    // Find the story_prompt block in the queue (usually the last block)
+    const storyPrompt = sceneQueue.find(
+      (b) => b.type === "story_prompt" && b.choices && b.choices.length > 0
+    );
+    if (!storyPrompt || !storyPrompt.choices) return;
+
+    // Clear old prefetch cache when we get new blocks
+    prefetchCacheRef.current.clear();
+    prefetchingRef.current.clear();
+
+    // Prefetch all offered choices in parallel
+    for (const choice of storyPrompt.choices) {
+      prefetchChoice(choice, assistantId, threadId);
+    }
+  }, [sceneQueue, assistantId, threadId, prefetchChoice]);
 
   const handleStart = async () => {
     setIsLoading(true);
@@ -172,7 +248,6 @@ export default function Home() {
     setThreadId(res.thread_id);
     setInstructions(res.instructions);
 
-    // Preload the first step while user reads instructions
     const step = await runStep({
       assistant_id: res.assistant_id,
       thread_id: res.thread_id,
@@ -180,19 +255,9 @@ export default function Home() {
     });
     setPreloadedStep(step);
 
-    const sceneId = String(step.scene_id || "unknown_scene");
-    let background = getBackgroundUrl(sceneId);
+    const bg = await loadBackground(step);
+    if (bg) setBackgroundUrlState(bg);
 
-    if (!background && step.description) {
-      const resBg = await fetch(`/api/load_background?scene_id=${sceneId}&description=${encodeURIComponent(step.description)}`);
-      const data = await resBg.json();
-      background = data.url;
-      updateBackground(sceneId, background);
-    } else {
-      setBackgroundUrlState(background);
-    }
-
-    // Pre-generate characters while user reads instructions
     if (step.blocks) {
       preGenerateCharacters(step.blocks);
     }
@@ -216,30 +281,85 @@ export default function Home() {
     }
   };
 
+  // Apply a scene (from prefetch cache or fresh API call)
+  const applyScene = useCallback((step: Record<string, unknown>, blocks: Block[], bg: string | null) => {
+    setSceneQueue(blocks);
+    setCurrentIndex(0);
+    if (bg) {
+      setBackgroundUrlState(bg);
+    }
+    preGenerateCharacters(blocks);
+  }, [preGenerateCharacters]);
+
   const handleSubmit = async () => {
     if (!input.trim() || !assistantId || !threadId) return;
+    const choiceText = input.trim();
     setIsLoading(true);
     setSceneQueue([]);
     setCurrentIndex(0);
     setCharacterSpriteUrl(null);
-    const step = await runStep({ assistant_id: assistantId, thread_id: threadId, message: input });
-    const sceneId = String(step.scene_id || "unknown_scene");
-    let background = getBackgroundUrl(sceneId);
     setInput("");
-    const blocks = step.blocks as Block[];
-    setSceneQueue(blocks);
 
-    // Pre-generate any new characters in this scene
-    preGenerateCharacters(blocks);
-
-    if (!background && step.description) {
-      const res = await fetch(`/api/load_background?scene_id=${sceneId}&description=${encodeURIComponent(step.description)}`);
-      const data = await res.json();
-      background = data.url;
-      updateBackground(sceneId, background);
-    } else {
-      setBackgroundUrlState(background);
+    // Check if this choice was prefetched
+    const cached = prefetchCacheRef.current.get(choiceText);
+    if (cached) {
+      prefetchCacheRef.current.clear();
+      applyScene(cached.step, cached.blocks, cached.backgroundUrl);
+      // Still need to send the real (non-buffered) message to keep the thread in sync
+      // Fire this in the background — the AI already generated the response via buffer,
+      // but the thread needs the real user message for continuity
+      runStep({
+        assistant_id: assistantId,
+        thread_id: threadId,
+        message: choiceText,
+      }).catch((err) => console.error("Thread sync failed:", err));
+      setIsLoading(false);
+      return;
     }
+
+    // No cache hit — custom input or prefetch hasn't finished. Do it live.
+    prefetchCacheRef.current.clear();
+    const step = await runStep({ assistant_id: assistantId, thread_id: threadId, message: choiceText });
+    const blocks = step.blocks as Block[];
+    const bg = await loadBackground(step);
+    applyScene(step, blocks, bg);
+    setIsLoading(false);
+  };
+
+  // When a choice button is clicked, set it as input and submit
+  const handleChoiceSelect = (choice: string) => {
+    setInput(choice);
+    // Use a microtask to ensure input state is set before submit reads it
+    // Actually, we can just call submit directly with the choice
+    handleChoiceSubmit(choice);
+  };
+
+  const handleChoiceSubmit = async (choiceText: string) => {
+    if (!choiceText.trim() || !assistantId || !threadId) return;
+    setIsLoading(true);
+    setSceneQueue([]);
+    setCurrentIndex(0);
+    setCharacterSpriteUrl(null);
+    setInput("");
+
+    const cached = prefetchCacheRef.current.get(choiceText);
+    if (cached) {
+      prefetchCacheRef.current.clear();
+      applyScene(cached.step, cached.blocks, cached.backgroundUrl);
+      runStep({
+        assistant_id: assistantId,
+        thread_id: threadId,
+        message: choiceText,
+      }).catch((err) => console.error("Thread sync failed:", err));
+      setIsLoading(false);
+      return;
+    }
+
+    prefetchCacheRef.current.clear();
+    const step = await runStep({ assistant_id: assistantId, thread_id: threadId, message: choiceText });
+    const blocks = step.blocks as Block[];
+    const bg = await loadBackground(step);
+    applyScene(step, blocks, bg);
     setIsLoading(false);
   };
 
@@ -352,8 +472,11 @@ export default function Home() {
                 {currentBlock.choices?.map((option, i) => (
                   <button
                     key={i}
-                    onClick={() => setInput(option)}
-                    className="bg-white text-black px-4 py-2 rounded hover:bg-gray-200"
+                    onClick={() => handleChoiceSelect(option)}
+                    className={`bg-white text-black px-4 py-2 rounded hover:bg-gray-200 transition-colors ${
+                      prefetchCacheRef.current.has(option) ? "ring-2 ring-green-400" : ""
+                    }`}
+                    disabled={isLoading}
                   >
                     {option}
                   </button>

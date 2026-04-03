@@ -39,59 +39,93 @@ def run_step():
 
     try:
         if is_buffer:
-            # Add the player's message with prebuffer context
-            client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="user",
-                content=f"[This is a prebuffering request. Please continue the story assuming the player might choose this branch, but do not assume it has been selected. Continue naturally from the current context.]\n\n{player_input}"
-            )
+            return _run_step_buffered(assistant_id, thread_id, player_input)
         else:
-            # Add the player's message to the thread
-            client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="user",
-                content=player_input
-            )
-
-        # Create the run (non-streaming)
-        run = client.beta.threads.runs.create(
-            assistant_id=assistant_id,
-            thread_id=thread_id
-        )
-
-        # Poll for completion
-        while True:
-            run_status = client.beta.threads.runs.retrieve(run.id, thread_id=thread_id)
-            if run_status.status in ["completed", "failed", "cancelled"]:
-                break
-            time.sleep(0.5)
-
-        if run_status.status != "completed":
-            return jsonify({"error": f"Run status: {run_status.status}"}), 500
-
-        # Fetch messages
-        messages = client.beta.threads.messages.list(thread_id=thread_id)
-
-        # Get the last assistant message
-        for msg in messages.data:
-            if msg.role == "assistant":
-                assistant_msg = msg
-                break
-        else:
-            return jsonify({"error": "No assistant message returned."}), 500
-
-        # Expecting a structured JSON array in the assistant message
-        content = assistant_msg.content[0].text.value
-
-        try:
-            blocks = json.loads(content)
-        except Exception as e:
-            return jsonify({"error": f"Invalid JSON format from assistant: {str(e)}", "raw": content}), 500
-
-        return jsonify(blocks)
-
+            return _run_step_live(assistant_id, thread_id, player_input)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def _run_step_live(assistant_id, thread_id, player_input):
+    """Run a step on the main thread. This is the real interaction."""
+    client.beta.threads.messages.create(
+        thread_id=thread_id,
+        role="user",
+        content=player_input
+    )
+
+    run = client.beta.threads.runs.create(
+        assistant_id=assistant_id,
+        thread_id=thread_id
+    )
+
+    while True:
+        run_status = client.beta.threads.runs.retrieve(run.id, thread_id=thread_id)
+        if run_status.status in ["completed", "failed", "cancelled"]:
+            break
+        time.sleep(0.5)
+
+    if run_status.status != "completed":
+        return jsonify({"error": f"Run status: {run_status.status}"}), 500
+
+    messages = client.beta.threads.messages.list(thread_id=thread_id)
+    for msg in messages.data:
+        if msg.role == "assistant":
+            assistant_msg = msg
+            break
+    else:
+        return jsonify({"error": "No assistant message returned."}), 500
+
+    content = assistant_msg.content[0].text.value
+    try:
+        blocks = json.loads(content)
+    except Exception as e:
+        return jsonify({"error": f"Invalid JSON format from assistant: {str(e)}", "raw": content}), 500
+
+    return jsonify(blocks)
+
+
+def _run_step_buffered(assistant_id, thread_id, player_input):
+    """Speculative prefetch using Chat Completions.
+
+    Does NOT touch the main thread. Instead, reads the thread history and
+    the assistant's instructions, then uses Chat Completions to generate
+    a speculative response. This keeps the main thread clean for the real
+    interaction that follows.
+    """
+    # Fetch the assistant's instructions
+    assistant = client.beta.assistants.retrieve(assistant_id)
+    system_instructions = assistant.instructions or ""
+
+    # Read recent thread messages (last 20 for context)
+    thread_messages = client.beta.threads.messages.list(thread_id=thread_id, limit=20)
+
+    # Build chat messages: system prompt + conversation history + speculative choice
+    chat_messages = [{"role": "system", "content": system_instructions}]
+
+    # Thread messages come newest-first, reverse for chronological order
+    for msg in reversed(thread_messages.data):
+        role = "assistant" if msg.role == "assistant" else "user"
+        text = msg.content[0].text.value if msg.content else ""
+        chat_messages.append({"role": role, "content": text})
+
+    # Add the speculative player choice
+    chat_messages.append({"role": "user", "content": player_input})
+
+    # Use Chat Completions (same model as the assistant) — no thread mutation
+    completion = client.chat.completions.create(
+        model="gpt-4o",
+        messages=chat_messages,
+        temperature=0.8
+    )
+
+    content = completion.choices[0].message.content
+    try:
+        blocks = json.loads(content)
+    except Exception as e:
+        return jsonify({"error": f"Invalid JSON from buffer: {str(e)}", "raw": content}), 500
+
+    return jsonify(blocks)
 
 
 @app.route("/api/setup_game", methods=["POST"])

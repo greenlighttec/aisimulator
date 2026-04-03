@@ -17,19 +17,21 @@ export async function startSession({ name, prompt }: {
 export async function runStep({
   assistant_id,
   thread_id,
-  message
+  message,
+  is_buffer = false
 }: {
   assistant_id: string;
   thread_id: string;
   message: string;
+  is_buffer?: boolean;
 }) {
   const res = await fetch(`${BASE_URL}/api/run_step`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ assistant_id, thread_id, message })
+    body: JSON.stringify({ assistant_id, thread_id, message, is_buffer })
   });
 
   if (!res.ok) throw new Error("Failed to run step.");
-  return await res.json(); // ✅ parse JSON like startSession
+  return await res.json();
 }
 
